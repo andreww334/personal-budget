@@ -2,11 +2,11 @@ from dotenv import load_dotenv
 load_dotenv()
 
 from flask import Flask
-from config import Config
-from extensions import db, migrate
-from routes.health import health_bp
-import models
+from app.config import Config
+from app.extensions import db, migrate
+from app.routes.health import health_bp
 from flask_cors import CORS
+from app import models
 
 def create_app():
   app = Flask(__name__)
