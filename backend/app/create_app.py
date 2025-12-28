@@ -2,10 +2,10 @@ from dotenv import load_dotenv
 load_dotenv()
 
 from flask import Flask
-from app.config import Config
-from app.extensions import db, migrate
-from app.routes.health import health_bp
-from app import models
+from config import Config
+from extensions import db, migrate
+from routes.health import health_bp
+import models
 from flask_cors import CORS
 
 def create_app():
@@ -19,7 +19,6 @@ def create_app():
   db.init_app(app)
   migrate.init_app(app, db)
 
-  from app import models
   app.register_blueprint(health_bp)
 
 
