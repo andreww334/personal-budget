@@ -1,6 +1,6 @@
 # Python
 backend/venv/
-backend/__pycache__/
+backend/app/__pycache__/
 backend/*.db
 
 # Node
@@ -9,3 +9,7 @@ frontend/dist/
 
 # Env
 .env
+
+#DS Store
+.DS_Store
+backend/.DS_Store
