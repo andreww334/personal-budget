@@ -13,7 +13,7 @@ def create_app():
   app = Flask(__name__)
   CORS(app, origins=[
         "http://localhost:5173",
-        "https://personal-budget-yjnc.onrender.com"
+        "https://personal-budget-1-gb0g.onrender.com"
   ])
   app.config.from_object(Config)
 
