@@ -1,11 +1,13 @@
 from flask import Blueprint, request, jsonify
 
+from app.parsers.chase import parse_chase_csv
+
 upload_bp = Blueprint("upload", __name__)
 
 
 @upload_bp.route("/api/upload", methods=["POST"])
 def upload_csv() -> tuple:
-    print(f"Received upload request")
+    print("Received upload request")
 
     if "file" not in request.files:
         return jsonify({"error": "No file provided"}), 400
@@ -20,13 +22,16 @@ def upload_csv() -> tuple:
 
     # Read the file content
     content = file.read().decode("utf-8")
-    lines = content.strip().split("\n")
-    print(f"Uploaded: {file.filename} ({len(lines) - 1} rows)")
 
-    # Basic info about the uploaded file
+    # Parse the CSV (currently only Chase format)
+    transactions = parse_chase_csv(content)
+
+    print(f"Parsed {len(transactions)} transactions from {file.filename}")
+    print(transactions)
+
     return jsonify({
         "success": True,
         "filename": file.filename,
-        "rows": len(lines) - 1,  # Exclude header row
-        "preview": lines[:5]  # First 5 lines for preview
+        "count": len(transactions),
+        "transactions": transactions,
     }), 200
