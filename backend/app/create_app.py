@@ -6,6 +6,7 @@ from app.config import Config
 from app.extensions import db, migrate
 from app.routes.health import health_bp
 from app.routes.upload import upload_bp
+from app.routes.transactions import transactions_bp
 from flask_cors import CORS
 from app import models
 
@@ -22,5 +23,6 @@ def create_app():
 
   app.register_blueprint(health_bp)
   app.register_blueprint(upload_bp)
+  app.register_blueprint(transactions_bp)
 
   return app

@@ -1,75 +1,53 @@
 import csv
 from datetime import datetime
 from io import StringIO
-from typing import TypedDict
+
+from app.parsers.base import BaseParser, ParsedTransaction
 
 
-class ParsedTransaction(TypedDict):
-    date: str
-    vendor: str
-    description: str
-    amount_cents: int
-    direction: str
-    source: str
-    original_category: str
+class ChaseParser(BaseParser):
+    """Parser for Chase bank CSV exports."""
 
+    source_name = "chase"
+    identifying_headers = ["Transaction Date", "Post Date", "Description", "Category", "Type", "Amount"]
 
-def parse_chase_csv(content: str) -> list[ParsedTransaction]:
-    """
-    Parse a Chase bank CSV export into transaction dictionaries.
+    def parse(self, content: str) -> list[ParsedTransaction]:
+        """
+        Parse a Chase bank CSV export.
 
-    Chase CSV format:
-    Transaction Date, Post Date, Description, Category, Type, Amount, Memo
+        Chase CSV format:
+        Transaction Date, Post Date, Description, Category, Type, Amount, Memo
+        """
+        transactions: list[ParsedTransaction] = []
+        reader = csv.DictReader(StringIO(content))
 
-    Returns list of parsed transactions ready for preview/commit.
-    """
-    transactions: list[ParsedTransaction] = []
+        for row in reader:
+            if not row.get("Transaction Date"):
+                continue
 
-    reader = csv.DictReader(StringIO(content))
+            # Parse date (MM/DD/YYYY format)
+            try:
+                date = datetime.strptime(row["Transaction Date"], "%m/%d/%Y").date()
+            except ValueError:
+                continue
 
-    for row in reader:
-        # Skip empty rows
-        if not row.get("Transaction Date"):
-            continue
+            # Parse amount - Chase uses negative for expenses
+            try:
+                amount_dollars = float(row.get("Amount", "0").strip())
+            except ValueError:
+                continue
 
-        # Parse date (MM/DD/YYYY format)
-        date_str = row["Transaction Date"]
-        try:
-            date = datetime.strptime(date_str, "%m/%d/%Y").date()
-        except ValueError:
-            continue  # Skip invalid dates
+            amount_cents = abs(int(round(amount_dollars * 100)))
+            direction = "income" if amount_dollars > 0 else "expense"
 
-        # Parse amount - Chase uses negative for expenses
-        amount_str = row.get("Amount", "0").strip()
-        try:
-            amount_dollars = float(amount_str)
-        except ValueError:
-            continue  # Skip invalid amounts
+            transactions.append({
+                "date": date.isoformat(),
+                "vendor": row.get("Description", "").strip(),
+                "description": row.get("Memo", "").strip(),
+                "amount_cents": amount_cents,
+                "direction": direction,
+                "source": self.source_name,
+                "original_category": row.get("Category", "").strip(),
+            })
 
-        # Convert to cents (absolute value)
-        amount_cents = abs(int(round(amount_dollars * 100)))
-
-        # Determine direction based on sign
-        direction = "income" if amount_dollars > 0 else "expense"
-
-        # Extract vendor from Description
-        vendor = row.get("Description", "").strip()
-
-        # Use Memo as description, or Category if no memo
-        memo = row.get("Memo", "").strip()
-        description = memo if memo else ""
-
-        # Keep original Chase category for reference
-        original_category = row.get("Category", "").strip()
-
-        transactions.append({
-            "date": date.isoformat(),
-            "vendor": vendor,
-            "description": description,
-            "amount_cents": amount_cents,
-            "direction": direction,
-            "source": "chase",
-            "original_category": original_category,
-        })
-
-    return transactions
+        return transactions
