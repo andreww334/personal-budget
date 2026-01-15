@@ -188,7 +188,7 @@ function TransactionTable({
       </p>
 
       {/* Table */}
-      <div className="overflow-hidden rounded-xl border border-slate-200">
+      <div className="rounded-xl border border-slate-200">
         <table className="w-full">
           <thead className="bg-slate-50">
             <tr>
