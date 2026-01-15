@@ -42,10 +42,36 @@ function App() {
     }
   };
 
+  const [isSaving, setIsSaving] = useState(false);
+
   const handleConfirm = async () => {
-    // TODO: TX-2 - Commit transactions to database
-    console.log('Confirming', transactions.length, 'transactions');
-    alert(`Would save ${transactions.length} transactions (TX-2 not implemented yet)`);
+    setIsSaving(true);
+    const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:5001';
+
+    try {
+      const response = await fetch(`${apiUrl}/api/transactions/commit`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ transactions }),
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        alert(`Successfully imported ${data.created} transactions!`);
+        handleCancel(); // Reset to upload screen
+      } else {
+        const error = await response.json();
+        console.error('Commit failed:', error);
+        alert('Failed to save transactions');
+      }
+    } catch (error) {
+      console.error('Commit error:', error);
+      alert('Failed to save transactions');
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   const handleCancel = () => {
@@ -88,6 +114,7 @@ function App() {
               transactions={transactions}
               onConfirm={handleConfirm}
               onCancel={handleCancel}
+              isLoading={isSaving}
             />
           ) : (
             <>

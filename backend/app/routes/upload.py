@@ -1,6 +1,6 @@
 from flask import Blueprint, request, jsonify
 
-from app.parsers.chase import parse_chase_csv
+from app.parsers import parse_csv
 
 upload_bp = Blueprint("upload", __name__)
 
@@ -23,15 +23,21 @@ def upload_csv() -> tuple:
     # Read the file content
     content = file.read().decode("utf-8")
 
-    # Parse the CSV (currently only Chase format)
-    transactions = parse_chase_csv(content)
+    # Auto-detect bank and parse
+    transactions, bank = parse_csv(content)
 
+    if bank is None:
+        return jsonify({
+            "error": "Unrecognized CSV format. Supported banks: Chase, Capital One, Charles Schwab"
+        }), 400
+
+    print(f"Detected bank: {bank}")
     print(f"Parsed {len(transactions)} transactions from {file.filename}")
-    print(transactions)
 
     return jsonify({
         "success": True,
         "filename": file.filename,
+        "bank": bank,
         "count": len(transactions),
         "transactions": transactions,
     }), 200
