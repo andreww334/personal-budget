@@ -1,13 +1,34 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import FileUpload from './components/FileUpload';
 import TransactionTable from './components/TransactionTable';
-import type { Transaction, UploadResponse } from './types';
+import type { Transaction, Category, UploadResponse } from './types';
+
+const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:5001';
 
 function App() {
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [isUploading, setIsUploading] = useState(false);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [showPreview, setShowPreview] = useState(false);
+  const [categories, setCategories] = useState<Category[]>([]);
+  const [isSaving, setIsSaving] = useState(false);
+
+  // Fetch categories on mount
+  useEffect(() => {
+    const fetchCategories = async () => {
+      try {
+        const response = await fetch(`${apiUrl}/api/categories`);
+        if (response.ok) {
+          const data = await response.json();
+          setCategories(data.categories);
+        }
+      } catch (error) {
+        console.error('Failed to fetch categories:', error);
+      }
+    };
+
+    fetchCategories();
+  }, []);
 
   const handleFileSelect = (file: File) => {
     setSelectedFile(file);
@@ -19,8 +40,6 @@ function App() {
     setIsUploading(true);
     const formData = new FormData();
     formData.append('file', selectedFile);
-
-    const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:5001';
 
     try {
       const response = await fetch(`${apiUrl}/api/upload`, {
@@ -42,11 +61,8 @@ function App() {
     }
   };
 
-  const [isSaving, setIsSaving] = useState(false);
-
   const handleConfirm = async () => {
     setIsSaving(true);
-    const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:5001';
 
     try {
       const response = await fetch(`${apiUrl}/api/transactions/commit`, {
@@ -78,6 +94,42 @@ function App() {
     setTransactions([]);
     setShowPreview(false);
     setSelectedFile(null);
+  };
+
+  const handleUpdateTransaction = (index: number, updates: Partial<Transaction>) => {
+    setTransactions(prev => prev.map((t, i) =>
+      i === index ? { ...t, ...updates } : t
+    ));
+  };
+
+  const handleRemoveTransaction = (index: number) => {
+    setTransactions(prev => prev.filter((_, i) => i !== index));
+  };
+
+  const handleCreateCategory = async (name: string): Promise<Category> => {
+    const response = await fetch(`${apiUrl}/api/categories`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ name }),
+    });
+
+    if (!response.ok) {
+      throw new Error('Failed to create category');
+    }
+
+    const newCategory: Category = await response.json();
+
+    // Add to local state if it's new
+    setCategories(prev => {
+      if (prev.some(c => c.id === newCategory.id)) {
+        return prev;
+      }
+      return [...prev, newCategory].sort((a, b) => a.name.localeCompare(b.name));
+    });
+
+    return newCategory;
   };
 
   return (
@@ -112,6 +164,10 @@ function App() {
           {showPreview ? (
             <TransactionTable
               transactions={transactions}
+              categories={categories}
+              onUpdate={handleUpdateTransaction}
+              onRemove={handleRemoveTransaction}
+              onCreateCategory={handleCreateCategory}
               onConfirm={handleConfirm}
               onCancel={handleCancel}
               isLoading={isSaving}

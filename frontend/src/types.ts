@@ -1,3 +1,9 @@
+export interface Category {
+  id: string;
+  name: string;
+  created_at: string;
+}
+
 export interface Transaction {
   date: string;
   vendor: string;
@@ -6,6 +12,7 @@ export interface Transaction {
   direction: 'income' | 'expense';
   source: string;
   original_category: string;
+  category_id?: string | null;
 }
 
 export interface UploadResponse {
