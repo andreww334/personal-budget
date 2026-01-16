@@ -1,17 +1,24 @@
 import { useState, useEffect } from 'react';
 import FileUpload from './components/FileUpload';
 import TransactionTable from './components/TransactionTable';
+import TransactionsList from './components/TransactionsList';
+import TransactionDetailModal from './components/TransactionDetailModal';
 import type { Transaction, Category, UploadResponse } from './types';
 
 const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:5001';
 
+type Tab = 'transactions' | 'import';
+
 function App() {
+  const [activeTab, setActiveTab] = useState<Tab>('transactions');
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [isUploading, setIsUploading] = useState(false);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [showPreview, setShowPreview] = useState(false);
   const [categories, setCategories] = useState<Category[]>([]);
   const [isSaving, setIsSaving] = useState(false);
+  const [selectedPreviewTransaction, setSelectedPreviewTransaction] = useState<Transaction | null>(null);
+  const [isPreviewModalOpen, setIsPreviewModalOpen] = useState(false);
 
   // Fetch categories on mount
   useEffect(() => {
@@ -132,6 +139,18 @@ function App() {
     return newCategory;
   };
 
+  const handlePreviewTransactionClick = (transaction: Transaction) => {
+    setSelectedPreviewTransaction(transaction);
+    setIsPreviewModalOpen(true);
+  };
+
+  const handlePreviewTransactionUpdate = (updated: Transaction) => {
+    setTransactions(prev =>
+      prev.map(t => (t.id === updated.id ? updated : t))
+    );
+    setSelectedPreviewTransaction(updated);
+  };
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100">
       {/* Header */}
@@ -148,61 +167,111 @@ function App() {
 
       {/* Main Content */}
       <main className="mx-auto max-w-4xl px-6 py-12">
-        <div className="mb-10">
-          <h1 className="text-3xl font-bold text-slate-900 mb-2">
-            {showPreview ? 'Review Transactions' : 'Import Transactions'}
-          </h1>
-          <p className="text-slate-500">
-            {showPreview
-              ? 'Review the parsed transactions before importing.'
-              : 'Upload your bank statement to get started tracking your spending.'}
-          </p>
+        {/* Tab Navigation */}
+        <div className="mb-8 flex gap-1 p-1 bg-slate-100 rounded-xl w-fit">
+          <button
+            onClick={() => setActiveTab('transactions')}
+            className={`px-4 py-2 text-sm font-medium rounded-lg transition-colors ${
+              activeTab === 'transactions'
+                ? 'bg-white text-slate-800 shadow-sm'
+                : 'text-slate-500 hover:text-slate-700'
+            }`}
+          >
+            Transactions
+          </button>
+          <button
+            onClick={() => setActiveTab('import')}
+            className={`px-4 py-2 text-sm font-medium rounded-lg transition-colors ${
+              activeTab === 'import'
+                ? 'bg-white text-slate-800 shadow-sm'
+                : 'text-slate-500 hover:text-slate-700'
+            }`}
+          >
+            Import
+          </button>
         </div>
 
-        {/* Content Card */}
-        <div className="rounded-2xl bg-white p-8 shadow-sm border border-slate-200">
-          {showPreview ? (
-            <TransactionTable
-              transactions={transactions}
-              categories={categories}
-              onUpdate={handleUpdateTransaction}
-              onRemove={handleRemoveTransaction}
-              onCreateCategory={handleCreateCategory}
-              onConfirm={handleConfirm}
-              onCancel={handleCancel}
-              isLoading={isSaving}
-            />
-          ) : (
-            <>
-              <FileUpload onFileSelect={handleFileSelect} />
+        {activeTab === 'transactions' ? (
+          <>
+            <div className="mb-10">
+              <h1 className="text-3xl font-bold text-slate-900 mb-2">Transactions</h1>
+              <p className="text-slate-500">View and manage your transactions. Click a row to see details.</p>
+            </div>
+            <div className="rounded-2xl bg-white p-8 shadow-sm border border-slate-200">
+              <TransactionsList categories={categories} />
+            </div>
+          </>
+        ) : (
+          <>
+            <div className="mb-10">
+              <h1 className="text-3xl font-bold text-slate-900 mb-2">
+                {showPreview ? 'Review Transactions' : 'Import Transactions'}
+              </h1>
+              <p className="text-slate-500">
+                {showPreview
+                  ? 'Review the parsed transactions before importing.'
+                  : 'Upload your bank statement to get started tracking your spending.'}
+              </p>
+            </div>
 
-              {selectedFile && (
-                <div className="mt-6 flex items-center justify-between p-4 bg-slate-50 rounded-xl">
-                  <div className="flex items-center gap-3">
-                    <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-emerald-100 text-emerald-600">
-                      <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                      </svg>
+            <div className="rounded-2xl bg-white p-8 shadow-sm border border-slate-200">
+              {showPreview ? (
+                <>
+                  <TransactionTable
+                    transactions={transactions}
+                    categories={categories}
+                    onUpdate={handleUpdateTransaction}
+                    onRemove={handleRemoveTransaction}
+                    onCreateCategory={handleCreateCategory}
+                    onConfirm={handleConfirm}
+                    onCancel={handleCancel}
+                    isLoading={isSaving}
+                    onTransactionClick={handlePreviewTransactionClick}
+                  />
+                  <TransactionDetailModal
+                    transaction={selectedPreviewTransaction}
+                    categories={categories}
+                    isOpen={isPreviewModalOpen}
+                    onClose={() => {
+                      setIsPreviewModalOpen(false);
+                      setSelectedPreviewTransaction(null);
+                    }}
+                    onTransactionUpdate={handlePreviewTransactionUpdate}
+                  />
+                </>
+              ) : (
+                <>
+                  <FileUpload onFileSelect={handleFileSelect} />
+
+                  {selectedFile && (
+                    <div className="mt-6 flex items-center justify-between p-4 bg-slate-50 rounded-xl">
+                      <div className="flex items-center gap-3">
+                        <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-emerald-100 text-emerald-600">
+                          <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                          </svg>
+                        </div>
+                        <div>
+                          <p className="font-medium text-slate-800">{selectedFile.name}</p>
+                          <p className="text-sm text-slate-500">
+                            {(selectedFile.size / 1024).toFixed(1)} KB
+                          </p>
+                        </div>
+                      </div>
+                      <button
+                        onClick={handleUpload}
+                        disabled={isUploading}
+                        className="px-5 py-2.5 bg-emerald-500 hover:bg-emerald-600 disabled:bg-emerald-300 text-white font-medium rounded-xl transition-colors cursor-pointer disabled:cursor-not-allowed"
+                      >
+                        {isUploading ? 'Uploading...' : 'Upload'}
+                      </button>
                     </div>
-                    <div>
-                      <p className="font-medium text-slate-800">{selectedFile.name}</p>
-                      <p className="text-sm text-slate-500">
-                        {(selectedFile.size / 1024).toFixed(1)} KB
-                      </p>
-                    </div>
-                  </div>
-                  <button
-                    onClick={handleUpload}
-                    disabled={isUploading}
-                    className="px-5 py-2.5 bg-emerald-500 hover:bg-emerald-600 disabled:bg-emerald-300 text-white font-medium rounded-xl transition-colors cursor-pointer disabled:cursor-not-allowed"
-                  >
-                    {isUploading ? 'Uploading...' : 'Upload'}
-                  </button>
-                </div>
+                  )}
+                </>
               )}
-            </>
-          )}
-        </div>
+            </div>
+          </>
+        )}
       </main>
     </div>
   );

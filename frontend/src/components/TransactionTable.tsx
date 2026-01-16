@@ -11,6 +11,7 @@ interface TransactionTableProps {
   onConfirm: () => void;
   onCancel: () => void;
   isLoading?: boolean;
+  onTransactionClick?: (transaction: Transaction) => void;
 }
 
 function formatCurrency(cents: number): string {
@@ -154,7 +155,8 @@ function TransactionTable({
   onCreateCategory,
   onConfirm,
   onCancel,
-  isLoading
+  isLoading,
+  onTransactionClick
 }: TransactionTableProps) {
   const totalExpenses = transactions
     .filter(t => t.direction === 'expense')
@@ -198,6 +200,7 @@ function TransactionTable({
               <th className="px-4 py-3 text-left text-sm font-medium text-slate-600">Description</th>
               <th className="px-4 py-3 text-left text-sm font-medium text-slate-600">Category</th>
               <th className="px-4 py-3 text-right text-sm font-medium text-slate-600">Amount</th>
+              <th className="w-10 px-2 py-3"></th>
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100">
@@ -248,6 +251,19 @@ function TransactionTable({
                     direction={transaction.direction}
                     onSave={(cents) => onUpdate(index, { amount_cents: cents })}
                   />
+                </td>
+                <td className="px-2 py-3">
+                  {onTransactionClick && transaction.direction === 'income' && (
+                    <button
+                      onClick={() => onTransactionClick(transaction)}
+                      className="opacity-0 group-hover:opacity-100 p-1 text-slate-400 hover:text-emerald-500 hover:bg-emerald-50 rounded transition-all"
+                      title="View details / Link as refund"
+                    >
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                      </svg>
+                    </button>
+                  )}
                 </td>
               </tr>
             ))}

@@ -9,9 +9,9 @@ from app.models import Transaction
 transactions_bp = Blueprint("transactions", __name__)
 
 
-def serialize_transaction(t: Transaction) -> dict:
+def serialize_transaction(t: Transaction, include_refunds: bool = False) -> dict:
     """Convert a Transaction model to JSON-serializable dict."""
-    return {
+    result = {
         "id": str(t.id),
         "vendor": t.vendor,
         "description": t.description or "",
@@ -21,7 +21,31 @@ def serialize_transaction(t: Transaction) -> dict:
         "source": t.source,
         "category_id": str(t.category_id) if t.category_id else None,
         "created_at": t.created_at.isoformat(),
+        "refund_of_transaction_id": str(t.refund_of_transaction_id) if t.refund_of_transaction_id else None,
     }
+
+    # Include linked refunds for original transactions (when requested)
+    if include_refunds and t.refunds:
+        result["refunds"] = [
+            {
+                "id": str(r.id),
+                "amount_cents": int(r.amount * 100),
+                "date": r.date.isoformat(),
+            }
+            for r in t.refunds
+        ]
+
+    # Include original transaction summary if this is a refund
+    if t.original_transaction:
+        result["original_transaction"] = {
+            "id": str(t.original_transaction.id),
+            "vendor": t.original_transaction.vendor,
+            "amount_cents": int(t.original_transaction.amount * 100),
+            "date": t.original_transaction.date.isoformat(),
+            "category_id": str(t.original_transaction.category_id) if t.original_transaction.category_id else None,
+        }
+
+    return result
 
 
 @transactions_bp.route("/api/transactions", methods=["GET"])
@@ -62,14 +86,14 @@ def list_transactions() -> tuple:
     transactions = query.order_by(Transaction.date.desc()).all()
 
     return jsonify({
-        "transactions": [serialize_transaction(t) for t in transactions],
+        "transactions": [serialize_transaction(t, include_refunds=True) for t in transactions],
         "count": len(transactions),
     }), 200
 
 
 @transactions_bp.route("/api/transactions/<transaction_id>", methods=["GET"])
 def get_transaction(transaction_id: str) -> tuple:
-    """Get a single transaction by ID."""
+    """Get a single transaction by ID, including linked refunds."""
     user_id = current_app.config.get("DEFAULT_USER_ID")
     if not user_id:
         return jsonify({"error": "DEFAULT_USER_ID not configured"}), 500
@@ -82,7 +106,7 @@ def get_transaction(transaction_id: str) -> tuple:
     if not transaction:
         return jsonify({"error": "Transaction not found"}), 404
 
-    return jsonify(serialize_transaction(transaction)), 200
+    return jsonify(serialize_transaction(transaction, include_refunds=True)), 200
 
 
 @transactions_bp.route("/api/transactions/<transaction_id>", methods=["PUT"])
@@ -189,3 +213,141 @@ def commit_transactions() -> tuple:
         "created": created_count,
         "errors": errors,
     }), 201
+
+
+@transactions_bp.route("/api/transactions/<transaction_id>/potential-originals", methods=["GET"])
+def get_potential_originals(transaction_id: str) -> tuple:
+    """
+    Get potential original transactions that this refund could be linked to.
+    Returns transactions from the same vendor (case-insensitive) that are:
+    - Expenses (direction = 'expense')
+    - Dated BEFORE the refund transaction
+    - Belong to the same user
+
+    Query params:
+    - limit: Number of transactions to return (default 10)
+    - offset: Pagination offset (default 0)
+    """
+    user_id = current_app.config.get("DEFAULT_USER_ID")
+    if not user_id:
+        return jsonify({"error": "DEFAULT_USER_ID not configured"}), 500
+
+    # Get the refund transaction
+    refund = Transaction.query.filter_by(
+        id=UUID(transaction_id),
+        user_id=UUID(user_id)
+    ).first()
+
+    if not refund:
+        return jsonify({"error": "Transaction not found"}), 404
+
+    # Only income transactions can be refunds
+    if refund.direction != "income":
+        return jsonify({"error": "Only income transactions can be marked as refunds"}), 400
+
+    limit = request.args.get("limit", 10, type=int)
+    offset = request.args.get("offset", 0, type=int)
+
+    # Find potential original transactions (case-insensitive vendor match)
+    query = Transaction.query.filter(
+        Transaction.user_id == UUID(user_id),
+        Transaction.direction == "expense",
+        Transaction.date < refund.date,
+        db.func.lower(Transaction.vendor) == refund.vendor.lower()
+    ).order_by(Transaction.date.desc())
+
+    total_count = query.count()
+    transactions = query.offset(offset).limit(limit).all()
+
+    return jsonify({
+        "transactions": [serialize_transaction(t, include_refunds=True) for t in transactions],
+        "total_count": total_count,
+        "limit": limit,
+        "offset": offset,
+        "has_more": offset + limit < total_count,
+    }), 200
+
+
+@transactions_bp.route("/api/transactions/<transaction_id>/link-refund", methods=["POST"])
+def link_refund(transaction_id: str) -> tuple:
+    """
+    Link a refund transaction to an original transaction.
+    The refund inherits the original transaction's category.
+
+    Request body:
+    - original_transaction_id: UUID of the original transaction
+    """
+    user_id = current_app.config.get("DEFAULT_USER_ID")
+    if not user_id:
+        return jsonify({"error": "DEFAULT_USER_ID not configured"}), 500
+
+    data = request.get_json()
+    if not data or not data.get("original_transaction_id"):
+        return jsonify({"error": "original_transaction_id is required"}), 400
+
+    # Get the refund transaction
+    refund = Transaction.query.filter_by(
+        id=UUID(transaction_id),
+        user_id=UUID(user_id)
+    ).first()
+
+    if not refund:
+        return jsonify({"error": "Refund transaction not found"}), 404
+
+    # Validate: only income transactions can be refunds
+    if refund.direction != "income":
+        return jsonify({"error": "Only income transactions can be marked as refunds"}), 400
+
+    # Get the original transaction
+    original = Transaction.query.filter_by(
+        id=UUID(data["original_transaction_id"]),
+        user_id=UUID(user_id)
+    ).first()
+
+    if not original:
+        return jsonify({"error": "Original transaction not found"}), 404
+
+    # Validate: original must be an expense
+    if original.direction != "expense":
+        return jsonify({"error": "Original transaction must be an expense"}), 400
+
+    # Validate: refund date must be after original date
+    if refund.date <= original.date:
+        return jsonify({"error": "Refund date must be after original transaction date"}), 400
+
+    # Link the refund and inherit category
+    refund.refund_of_transaction_id = original.id
+    refund.category_id = original.category_id
+
+    db.session.commit()
+
+    return jsonify(serialize_transaction(refund, include_refunds=True)), 200
+
+
+@transactions_bp.route("/api/transactions/<transaction_id>/unlink-refund", methods=["POST"])
+def unlink_refund(transaction_id: str) -> tuple:
+    """
+    Unlink a refund from its original transaction.
+    Sets refund_of_transaction_id back to null.
+    Note: Category is NOT automatically cleared (user may want to keep it).
+    """
+    user_id = current_app.config.get("DEFAULT_USER_ID")
+    if not user_id:
+        return jsonify({"error": "DEFAULT_USER_ID not configured"}), 500
+
+    # Get the refund transaction
+    refund = Transaction.query.filter_by(
+        id=UUID(transaction_id),
+        user_id=UUID(user_id)
+    ).first()
+
+    if not refund:
+        return jsonify({"error": "Transaction not found"}), 404
+
+    if not refund.refund_of_transaction_id:
+        return jsonify({"error": "Transaction is not linked as a refund"}), 400
+
+    refund.refund_of_transaction_id = None
+    db.session.commit()
+
+    return jsonify(serialize_transaction(refund, include_refunds=True)), 200
