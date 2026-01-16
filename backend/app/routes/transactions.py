@@ -173,6 +173,7 @@ def commit_transactions() -> tuple:
                 direction=t["direction"],
                 date=datetime.strptime(t["date"], "%Y-%m-%d").date(),
                 source=t.get("source", "import"),
+                category_id=UUID(t["category_id"]) if t.get("category_id") else None,
             )
             db.session.add(transaction)
             created_count += 1
