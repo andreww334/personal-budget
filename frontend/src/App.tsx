@@ -3,14 +3,19 @@ import FileUpload from './components/FileUpload';
 import TransactionTable from './components/TransactionTable';
 import TransactionsList from './components/TransactionsList';
 import TransactionDetailModal from './components/TransactionDetailModal';
+import MonthlyReport from './components/MonthlyReport';
+import CategoryReport from './components/CategoryReport';
+import VendorReport from './components/VendorReport';
 import type { Transaction, Category, UploadResponse } from './types';
 
 const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:5001';
 
-type Tab = 'transactions' | 'import';
+type Tab = 'transactions' | 'reports' | 'import';
+type ReportTab = 'monthly' | 'category' | 'vendor';
 
 function App() {
   const [activeTab, setActiveTab] = useState<Tab>('transactions');
+  const [reportTab, setReportTab] = useState<ReportTab>('monthly');
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [isUploading, setIsUploading] = useState(false);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
@@ -180,6 +185,16 @@ function App() {
             Transactions
           </button>
           <button
+            onClick={() => setActiveTab('reports')}
+            className={`px-4 py-2 text-sm font-medium rounded-lg transition-colors ${
+              activeTab === 'reports'
+                ? 'bg-white text-slate-800 shadow-sm'
+                : 'text-slate-500 hover:text-slate-700'
+            }`}
+          >
+            Reports
+          </button>
+          <button
             onClick={() => setActiveTab('import')}
             className={`px-4 py-2 text-sm font-medium rounded-lg transition-colors ${
               activeTab === 'import'
@@ -191,7 +206,7 @@ function App() {
           </button>
         </div>
 
-        {activeTab === 'transactions' ? (
+        {activeTab === 'transactions' && (
           <>
             <div className="mb-10">
               <h1 className="text-3xl font-bold text-slate-900 mb-2">Transactions</h1>
@@ -201,7 +216,58 @@ function App() {
               <TransactionsList categories={categories} />
             </div>
           </>
-        ) : (
+        )}
+
+        {activeTab === 'reports' && (
+          <>
+            <div className="mb-6">
+              <h1 className="text-3xl font-bold text-slate-900 mb-2">Reports</h1>
+              <p className="text-slate-500">See your spending and income trends.</p>
+            </div>
+
+            {/* Report Sub-tabs */}
+            <div className="mb-6 flex gap-2 border-b border-slate-200">
+              <button
+                onClick={() => setReportTab('monthly')}
+                className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
+                  reportTab === 'monthly'
+                    ? 'border-emerald-500 text-emerald-600'
+                    : 'border-transparent text-slate-500 hover:text-slate-700'
+                }`}
+              >
+                Monthly
+              </button>
+              <button
+                onClick={() => setReportTab('category')}
+                className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
+                  reportTab === 'category'
+                    ? 'border-emerald-500 text-emerald-600'
+                    : 'border-transparent text-slate-500 hover:text-slate-700'
+                }`}
+              >
+                By Category
+              </button>
+              <button
+                onClick={() => setReportTab('vendor')}
+                className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
+                  reportTab === 'vendor'
+                    ? 'border-emerald-500 text-emerald-600'
+                    : 'border-transparent text-slate-500 hover:text-slate-700'
+                }`}
+              >
+                By Vendor
+              </button>
+            </div>
+
+            <div className="rounded-2xl bg-white p-8 shadow-sm border border-slate-200">
+              {reportTab === 'monthly' && <MonthlyReport />}
+              {reportTab === 'category' && <CategoryReport />}
+              {reportTab === 'vendor' && <VendorReport />}
+            </div>
+          </>
+        )}
+
+        {activeTab === 'import' && (
           <>
             <div className="mb-10">
               <h1 className="text-3xl font-bold text-slate-900 mb-2">

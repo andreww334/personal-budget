@@ -51,3 +51,45 @@ export interface UploadResponse {
   count: number;
   transactions: Transaction[];
 }
+
+// Report types
+export interface CategoryTotal {
+  category_id: string | null;
+  category_name: string;
+  total: number; // cents
+}
+
+export interface MonthlyData {
+  month: string; // YYYY-MM format
+  total_expenses: number; // cents
+  total_income: number; // cents
+  categories: CategoryTotal[];
+}
+
+export interface MonthlyReportResponse {
+  months: MonthlyData[];
+}
+
+export interface CategoryReportItem {
+  category_id: string | null;
+  category_name: string;
+  total: number; // cents
+  transaction_count: number;
+}
+
+export interface CategoryReportResponse {
+  categories: CategoryReportItem[];
+  total_expenses: number; // cents
+}
+
+export interface VendorReportItem {
+  vendor: string;
+  total: number; // cents
+  transaction_count: number;
+}
+
+export interface VendorReportResponse {
+  vendors: VendorReportItem[];
+  total_expenses: number; // cents
+  vendor_count: number;
+}
