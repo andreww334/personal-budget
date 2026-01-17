@@ -51,13 +51,15 @@ def serialize_transaction(t: Transaction, include_refunds: bool = False) -> dict
 @transactions_bp.route("/api/transactions", methods=["GET"])
 def list_transactions() -> tuple:
     """
-    List all transactions for the current user.
+    List transactions for the current user with pagination.
 
     Query params:
     - start_date: Filter transactions from this date (YYYY-MM-DD)
     - end_date: Filter transactions until this date (YYYY-MM-DD)
     - direction: Filter by 'income' or 'expense'
     - source: Filter by source (e.g., 'chase', 'capital_one')
+    - limit: Number of transactions to return (default 50)
+    - offset: Pagination offset (default 0)
     """
     user_id = current_app.config.get("DEFAULT_USER_ID")
     if not user_id:
@@ -82,12 +84,23 @@ def list_transactions() -> tuple:
     if source:
         query = query.filter_by(source=source)
 
-    # Order by date descending (most recent first)
-    transactions = query.order_by(Transaction.date.desc()).all()
+    # Get total count before pagination
+    total_count = query.count()
+
+    # Pagination
+    limit = request.args.get("limit", 50, type=int)
+    offset = request.args.get("offset", 0, type=int)
+
+    # Order by date descending (most recent first) and apply pagination
+    transactions = query.order_by(Transaction.date.desc()).offset(offset).limit(limit).all()
 
     return jsonify({
         "transactions": [serialize_transaction(t, include_refunds=True) for t in transactions],
         "count": len(transactions),
+        "total_count": total_count,
+        "limit": limit,
+        "offset": offset,
+        "has_more": offset + limit < total_count,
     }), 200
 
 
