@@ -1,10 +1,11 @@
 from datetime import datetime
 from uuid import UUID
 
-from flask import Blueprint, request, jsonify, current_app
+from flask import Blueprint, request, jsonify, g
 
 from app.extensions import db
 from app.models import Transaction
+from app.auth import login_required
 
 transactions_bp = Blueprint("transactions", __name__)
 
@@ -49,6 +50,7 @@ def serialize_transaction(t: Transaction, include_refunds: bool = False) -> dict
 
 
 @transactions_bp.route("/api/transactions", methods=["GET"])
+@login_required
 def list_transactions() -> tuple:
     """
     List transactions for the current user with pagination.
@@ -61,11 +63,7 @@ def list_transactions() -> tuple:
     - limit: Number of transactions to return (default 50)
     - offset: Pagination offset (default 0)
     """
-    user_id = current_app.config.get("DEFAULT_USER_ID")
-    if not user_id:
-        return jsonify({"error": "DEFAULT_USER_ID not configured"}), 500
-
-    query = Transaction.query.filter_by(user_id=UUID(user_id))
+    query = Transaction.query.filter_by(user_id=g.user_id)
 
     # Apply filters
     start_date = request.args.get("start_date")
@@ -105,15 +103,12 @@ def list_transactions() -> tuple:
 
 
 @transactions_bp.route("/api/transactions/<transaction_id>", methods=["GET"])
+@login_required
 def get_transaction(transaction_id: str) -> tuple:
     """Get a single transaction by ID, including linked refunds."""
-    user_id = current_app.config.get("DEFAULT_USER_ID")
-    if not user_id:
-        return jsonify({"error": "DEFAULT_USER_ID not configured"}), 500
-
     transaction = Transaction.query.filter_by(
         id=UUID(transaction_id),
-        user_id=UUID(user_id)
+        user_id=g.user_id
     ).first()
 
     if not transaction:
@@ -123,15 +118,12 @@ def get_transaction(transaction_id: str) -> tuple:
 
 
 @transactions_bp.route("/api/transactions/<transaction_id>", methods=["PUT"])
+@login_required
 def update_transaction(transaction_id: str) -> tuple:
     """Update a transaction."""
-    user_id = current_app.config.get("DEFAULT_USER_ID")
-    if not user_id:
-        return jsonify({"error": "DEFAULT_USER_ID not configured"}), 500
-
     transaction = Transaction.query.filter_by(
         id=UUID(transaction_id),
-        user_id=UUID(user_id)
+        user_id=g.user_id
     ).first()
 
     if not transaction:
@@ -161,15 +153,12 @@ def update_transaction(transaction_id: str) -> tuple:
 
 
 @transactions_bp.route("/api/transactions/<transaction_id>", methods=["DELETE"])
+@login_required
 def delete_transaction(transaction_id: str) -> tuple:
     """Delete a transaction."""
-    user_id = current_app.config.get("DEFAULT_USER_ID")
-    if not user_id:
-        return jsonify({"error": "DEFAULT_USER_ID not configured"}), 500
-
     transaction = Transaction.query.filter_by(
         id=UUID(transaction_id),
-        user_id=UUID(user_id)
+        user_id=g.user_id
     ).first()
 
     if not transaction:
@@ -182,6 +171,7 @@ def delete_transaction(transaction_id: str) -> tuple:
 
 
 @transactions_bp.route("/api/transactions/commit", methods=["POST"])
+@login_required
 def commit_transactions() -> tuple:
     """
     Commit parsed transactions to the database.
@@ -192,10 +182,6 @@ def commit_transactions() -> tuple:
     if not data or "transactions" not in data:
         return jsonify({"error": "No transactions provided"}), 400
 
-    user_id = current_app.config.get("DEFAULT_USER_ID")
-    if not user_id:
-        return jsonify({"error": "DEFAULT_USER_ID not configured"}), 500
-
     transactions_data = data["transactions"]
     created_count = 0
     errors = []
@@ -203,7 +189,7 @@ def commit_transactions() -> tuple:
     for i, t in enumerate(transactions_data):
         try:
             transaction = Transaction(
-                user_id=UUID(user_id),
+                user_id=g.user_id,
                 vendor=t["vendor"],
                 description=t.get("description", ""),
                 amount=t["amount_cents"] / 100,  # Convert cents back to dollars for DB
@@ -229,6 +215,7 @@ def commit_transactions() -> tuple:
 
 
 @transactions_bp.route("/api/transactions/<transaction_id>/potential-originals", methods=["GET"])
+@login_required
 def get_potential_originals(transaction_id: str) -> tuple:
     """
     Get potential original transactions that this refund could be linked to.
@@ -241,14 +228,10 @@ def get_potential_originals(transaction_id: str) -> tuple:
     - limit: Number of transactions to return (default 10)
     - offset: Pagination offset (default 0)
     """
-    user_id = current_app.config.get("DEFAULT_USER_ID")
-    if not user_id:
-        return jsonify({"error": "DEFAULT_USER_ID not configured"}), 500
-
     # Get the refund transaction
     refund = Transaction.query.filter_by(
         id=UUID(transaction_id),
-        user_id=UUID(user_id)
+        user_id=g.user_id
     ).first()
 
     if not refund:
@@ -263,7 +246,7 @@ def get_potential_originals(transaction_id: str) -> tuple:
 
     # Find potential original transactions (case-insensitive vendor match)
     query = Transaction.query.filter(
-        Transaction.user_id == UUID(user_id),
+        Transaction.user_id == g.user_id,
         Transaction.direction == "expense",
         Transaction.date < refund.date,
         db.func.lower(Transaction.vendor) == refund.vendor.lower()
@@ -282,6 +265,7 @@ def get_potential_originals(transaction_id: str) -> tuple:
 
 
 @transactions_bp.route("/api/transactions/<transaction_id>/link-refund", methods=["POST"])
+@login_required
 def link_refund(transaction_id: str) -> tuple:
     """
     Link a refund transaction to an original transaction.
@@ -290,10 +274,6 @@ def link_refund(transaction_id: str) -> tuple:
     Request body:
     - original_transaction_id: UUID of the original transaction
     """
-    user_id = current_app.config.get("DEFAULT_USER_ID")
-    if not user_id:
-        return jsonify({"error": "DEFAULT_USER_ID not configured"}), 500
-
     data = request.get_json()
     if not data or not data.get("original_transaction_id"):
         return jsonify({"error": "original_transaction_id is required"}), 400
@@ -301,7 +281,7 @@ def link_refund(transaction_id: str) -> tuple:
     # Get the refund transaction
     refund = Transaction.query.filter_by(
         id=UUID(transaction_id),
-        user_id=UUID(user_id)
+        user_id=g.user_id
     ).first()
 
     if not refund:
@@ -314,7 +294,7 @@ def link_refund(transaction_id: str) -> tuple:
     # Get the original transaction
     original = Transaction.query.filter_by(
         id=UUID(data["original_transaction_id"]),
-        user_id=UUID(user_id)
+        user_id=g.user_id
     ).first()
 
     if not original:
@@ -338,20 +318,17 @@ def link_refund(transaction_id: str) -> tuple:
 
 
 @transactions_bp.route("/api/transactions/<transaction_id>/unlink-refund", methods=["POST"])
+@login_required
 def unlink_refund(transaction_id: str) -> tuple:
     """
     Unlink a refund from its original transaction.
     Sets refund_of_transaction_id back to null.
     Note: Category is NOT automatically cleared (user may want to keep it).
     """
-    user_id = current_app.config.get("DEFAULT_USER_ID")
-    if not user_id:
-        return jsonify({"error": "DEFAULT_USER_ID not configured"}), 500
-
     # Get the refund transaction
     refund = Transaction.query.filter_by(
         id=UUID(transaction_id),
-        user_id=UUID(user_id)
+        user_id=g.user_id
     ).first()
 
     if not refund:

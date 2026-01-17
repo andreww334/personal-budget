@@ -2,16 +2,18 @@ from datetime import datetime
 from uuid import UUID
 from collections import defaultdict
 
-from flask import Blueprint, request, jsonify, current_app
+from flask import Blueprint, request, jsonify, g
 from sqlalchemy import func, extract
 
 from app.extensions import db
 from app.models import Transaction, Category
+from app.auth import login_required
 
 reports_bp = Blueprint("reports", __name__)
 
 
 @reports_bp.route("/api/reports/monthly", methods=["GET"])
+@login_required
 def get_monthly_report() -> tuple:
     """
     Get monthly aggregation of transactions with category breakdown.
@@ -37,12 +39,8 @@ def get_monthly_report() -> tuple:
         ]
     }
     """
-    user_id = current_app.config.get("DEFAULT_USER_ID")
-    if not user_id:
-        return jsonify({"error": "DEFAULT_USER_ID not configured"}), 500
-
     # Build base query
-    query = Transaction.query.filter(Transaction.user_id == UUID(user_id))
+    query = Transaction.query.filter(Transaction.user_id == g.user_id)
 
     # Apply date filters
     start_date = request.args.get("start_date")
@@ -56,7 +54,7 @@ def get_monthly_report() -> tuple:
     transactions = query.all()
 
     # Get all categories for name lookup
-    categories = Category.query.filter_by(user_id=UUID(user_id)).all()
+    categories = Category.query.filter_by(user_id=g.user_id).all()
     category_names = {str(c.id): c.name for c in categories}
 
     # Build a lookup of transaction id -> transaction for refund processing
@@ -123,6 +121,7 @@ def get_monthly_report() -> tuple:
 
 
 @reports_bp.route("/api/reports/by-category", methods=["GET"])
+@login_required
 def get_category_report() -> tuple:
     """
     Get spending aggregated by category.
@@ -146,11 +145,7 @@ def get_category_report() -> tuple:
         "total_expenses": 500000
     }
     """
-    user_id = current_app.config.get("DEFAULT_USER_ID")
-    if not user_id:
-        return jsonify({"error": "DEFAULT_USER_ID not configured"}), 500
-
-    query = Transaction.query.filter(Transaction.user_id == UUID(user_id))
+    query = Transaction.query.filter(Transaction.user_id == g.user_id)
 
     start_date = request.args.get("start_date")
     if start_date:
@@ -163,7 +158,7 @@ def get_category_report() -> tuple:
     transactions = query.all()
 
     # Get all categories for name lookup
-    categories = Category.query.filter_by(user_id=UUID(user_id)).all()
+    categories = Category.query.filter_by(user_id=g.user_id).all()
     category_names = {str(c.id): c.name for c in categories}
 
     # Aggregate by category
@@ -204,6 +199,7 @@ def get_category_report() -> tuple:
 
 
 @reports_bp.route("/api/reports/by-vendor", methods=["GET"])
+@login_required
 def get_vendor_report() -> tuple:
     """
     Get spending aggregated by vendor.
@@ -228,11 +224,7 @@ def get_vendor_report() -> tuple:
         "vendor_count": 50
     }
     """
-    user_id = current_app.config.get("DEFAULT_USER_ID")
-    if not user_id:
-        return jsonify({"error": "DEFAULT_USER_ID not configured"}), 500
-
-    query = Transaction.query.filter(Transaction.user_id == UUID(user_id))
+    query = Transaction.query.filter(Transaction.user_id == g.user_id)
 
     start_date = request.args.get("start_date")
     if start_date:

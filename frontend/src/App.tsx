@@ -6,14 +6,20 @@ import TransactionDetailModal from './components/TransactionDetailModal';
 import MonthlyReport from './components/MonthlyReport';
 import CategoryReport from './components/CategoryReport';
 import VendorReport from './components/VendorReport';
+import Login from './components/Login';
+import Register from './components/Register';
+import { useAuth } from './contexts/AuthContext';
 import type { Transaction, Category, UploadResponse } from './types';
 
 const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:5001';
 
 type Tab = 'transactions' | 'reports' | 'import';
 type ReportTab = 'monthly' | 'category' | 'vendor';
+type AuthView = 'login' | 'register';
 
 function App() {
+  const { user, isLoading: authLoading, isAuthenticated, logout } = useAuth();
+  const [authView, setAuthView] = useState<AuthView>('login');
   const [activeTab, setActiveTab] = useState<Tab>('transactions');
   const [reportTab, setReportTab] = useState<ReportTab>('monthly');
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
@@ -25,11 +31,15 @@ function App() {
   const [selectedPreviewTransaction, setSelectedPreviewTransaction] = useState<Transaction | null>(null);
   const [isPreviewModalOpen, setIsPreviewModalOpen] = useState(false);
 
-  // Fetch categories on mount
+  // Fetch categories when authenticated
   useEffect(() => {
+    if (!isAuthenticated) return;
+
     const fetchCategories = async () => {
       try {
-        const response = await fetch(`${apiUrl}/api/categories`);
+        const response = await fetch(`${apiUrl}/api/categories`, {
+          credentials: 'include',
+        });
         if (response.ok) {
           const data = await response.json();
           setCategories(data.categories);
@@ -40,7 +50,7 @@ function App() {
     };
 
     fetchCategories();
-  }, []);
+  }, [isAuthenticated]);
 
   const handleFileSelect = (file: File) => {
     setSelectedFile(file);
@@ -57,6 +67,7 @@ function App() {
       const response = await fetch(`${apiUrl}/api/upload`, {
         method: 'POST',
         body: formData,
+        credentials: 'include',
       });
 
       if (response.ok) {
@@ -82,6 +93,7 @@ function App() {
         headers: {
           'Content-Type': 'application/json',
         },
+        credentials: 'include',
         body: JSON.stringify({ transactions }),
       });
 
@@ -124,6 +136,7 @@ function App() {
       headers: {
         'Content-Type': 'application/json',
       },
+      credentials: 'include',
       body: JSON.stringify({ name }),
     });
 
@@ -156,16 +169,44 @@ function App() {
     setSelectedPreviewTransaction(updated);
   };
 
+  // Show loading state while checking auth
+  if (authLoading) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 flex items-center justify-center">
+        <div className="text-slate-500">Loading...</div>
+      </div>
+    );
+  }
+
+  // Show login/register if not authenticated
+  if (!isAuthenticated) {
+    if (authView === 'login') {
+      return <Login onSwitchToRegister={() => setAuthView('register')} />;
+    }
+    return <Register onSwitchToLogin={() => setAuthView('login')} />;
+  }
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100">
       {/* Header */}
       <header className="border-b border-slate-200 bg-white/80 backdrop-blur-sm">
         <div className="mx-auto max-w-4xl px-6 py-4">
-          <div className="flex items-center gap-3">
-            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-emerald-500 text-white font-bold text-lg">
-              B
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-emerald-500 text-white font-bold text-lg">
+                B
+              </div>
+              <span className="text-xl font-semibold text-slate-800">Budget</span>
             </div>
-            <span className="text-xl font-semibold text-slate-800">Budget</span>
+            <div className="flex items-center gap-4">
+              <span className="text-sm text-slate-600">{user?.name}</span>
+              <button
+                onClick={logout}
+                className="text-sm text-slate-500 hover:text-slate-700 font-medium"
+              >
+                Sign out
+              </button>
+            </div>
           </div>
         </div>
       </header>

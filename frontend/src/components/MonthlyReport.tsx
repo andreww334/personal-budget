@@ -129,7 +129,9 @@ function MonthlyReport() {
     setIsLoading(true);
     setError(null);
     try {
-      const response = await fetch(`${apiUrl}/api/reports/monthly`);
+      const response = await fetch(`${apiUrl}/api/reports/monthly`, {
+        credentials: 'include',
+      });
       if (response.ok) {
         const data: MonthlyReportResponse = await response.json();
         setMonths(data.months);

@@ -20,7 +20,9 @@ function CategoryReport() {
     setIsLoading(true);
     setError(null);
     try {
-      const response = await fetch(`${apiUrl}/api/reports/by-category`);
+      const response = await fetch(`${apiUrl}/api/reports/by-category`, {
+        credentials: 'include',
+      });
       if (response.ok) {
         const data: CategoryReportResponse = await response.json();
         setCategories(data.categories);

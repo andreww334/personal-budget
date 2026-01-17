@@ -21,7 +21,9 @@ function VendorReport() {
     setIsLoading(true);
     setError(null);
     try {
-      const response = await fetch(`${apiUrl}/api/reports/by-vendor`);
+      const response = await fetch(`${apiUrl}/api/reports/by-vendor`, {
+        credentials: 'include',
+      });
       if (response.ok) {
         const data: VendorReportResponse = await response.json();
         setVendors(data.vendors);

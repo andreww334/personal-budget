@@ -45,7 +45,8 @@ function TransactionsList({ categories }: TransactionsListProps) {
     setError(null);
     try {
       const response = await fetch(
-        `${apiUrl}/api/transactions?limit=${PAGE_SIZE}&offset=${newOffset}`
+        `${apiUrl}/api/transactions?limit=${PAGE_SIZE}&offset=${newOffset}`,
+        { credentials: 'include' }
       );
       if (response.ok) {
         const data = await response.json();
@@ -97,6 +98,7 @@ function TransactionsList({ categories }: TransactionsListProps) {
     try {
       const response = await fetch(`${apiUrl}/api/transactions/${transactionId}`, {
         method: 'DELETE',
+        credentials: 'include',
       });
 
       if (response.ok) {

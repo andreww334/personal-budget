@@ -1,6 +1,7 @@
 import uuid
 from datetime import datetime
 
+import bcrypt
 from sqlalchemy.dialects.postgresql import UUID
 from app.extensions import db
 
@@ -11,11 +12,26 @@ class User(db.Model):
     id = db.Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     name = db.Column(db.String(255), nullable=False)
     email = db.Column(db.String(255), unique=True, nullable=False)
+    password_hash = db.Column(db.String(255), nullable=True)
 
     created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
 
     categories = db.relationship("Category", backref="user", lazy=True)
     transactions = db.relationship("Transaction", backref="user", lazy=True)
+
+    def set_password(self, password: str) -> None:
+        """Hash and store the password."""
+        password_bytes = password.encode('utf-8')
+        salt = bcrypt.gensalt()
+        self.password_hash = bcrypt.hashpw(password_bytes, salt).decode('utf-8')
+
+    def check_password(self, password: str) -> bool:
+        """Verify password against stored hash."""
+        if not self.password_hash:
+            return False
+        password_bytes = password.encode('utf-8')
+        hash_bytes = self.password_hash.encode('utf-8')
+        return bcrypt.checkpw(password_bytes, hash_bytes)
 
     def __repr__(self):
         return f"<User {self.email}>"

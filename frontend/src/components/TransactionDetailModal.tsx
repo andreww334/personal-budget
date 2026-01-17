@@ -65,7 +65,8 @@ function TransactionDetailModal({
     setIsLoadingOriginals(true);
     try {
       const response = await fetch(
-        `${apiUrl}/api/transactions/${transaction.id}/potential-originals?limit=10&offset=${offset}`
+        `${apiUrl}/api/transactions/${transaction.id}/potential-originals?limit=10&offset=${offset}`,
+        { credentials: 'include' }
       );
       if (response.ok) {
         const data: PotentialOriginalsResponse = await response.json();
@@ -99,6 +100,7 @@ function TransactionDetailModal({
         {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
           body: JSON.stringify({ original_transaction_id: originalId }),
         }
       );
@@ -121,7 +123,7 @@ function TransactionDetailModal({
     try {
       const response = await fetch(
         `${apiUrl}/api/transactions/${transaction.id}/unlink-refund`,
-        { method: 'POST' }
+        { method: 'POST', credentials: 'include' }
       );
 
       if (response.ok) {

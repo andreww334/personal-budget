@@ -1,11 +1,13 @@
 from flask import Blueprint, request, jsonify
 
 from app.parsers import parse_csv
+from app.auth import login_required
 
 upload_bp = Blueprint("upload", __name__)
 
 
 @upload_bp.route("/api/upload", methods=["POST"])
+@login_required
 def upload_csv() -> tuple:
     print("Received upload request")
 
