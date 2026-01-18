@@ -1,4 +1,5 @@
-import { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import { createContext, useContext, useState, useEffect } from 'react';
+import type { ReactNode } from 'react';
 import type { User } from '../types';
 
 const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:5001';
