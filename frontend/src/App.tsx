@@ -22,8 +22,9 @@ function App() {
   const [authView, setAuthView] = useState<AuthView>('login');
   const [activeTab, setActiveTab] = useState<Tab>('transactions');
   const [reportTab, setReportTab] = useState<ReportTab>('monthly');
-  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
   const [isUploading, setIsUploading] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState('');
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [showPreview, setShowPreview] = useState(false);
   const [categories, setCategories] = useState<Category[]>([]);
@@ -52,35 +53,54 @@ function App() {
     fetchCategories();
   }, [isAuthenticated]);
 
-  const handleFileSelect = (file: File) => {
-    setSelectedFile(file);
+  const handleFilesSelect = (files: File[]) => {
+    setSelectedFiles(files);
   };
 
   const handleUpload = async () => {
-    if (!selectedFile) return;
+    if (selectedFiles.length === 0) return;
 
     setIsUploading(true);
-    const formData = new FormData();
-    formData.append('file', selectedFile);
+    setUploadProgress('');
+    const allTransactions: Transaction[] = [];
+    const errors: string[] = [];
 
     try {
-      const response = await fetch(`${apiUrl}/api/upload`, {
-        method: 'POST',
-        body: formData,
-        credentials: 'include',
-      });
+      for (let i = 0; i < selectedFiles.length; i++) {
+        const file = selectedFiles[i];
+        setUploadProgress(`Uploading ${i + 1} of ${selectedFiles.length}: ${file.name}`);
 
-      if (response.ok) {
-        const data: UploadResponse = await response.json();
-        setTransactions(data.transactions);
+        const formData = new FormData();
+        formData.append('file', file);
+
+        const response = await fetch(`${apiUrl}/api/upload`, {
+          method: 'POST',
+          body: formData,
+          credentials: 'include',
+        });
+
+        if (response.ok) {
+          const data: UploadResponse = await response.json();
+          allTransactions.push(...data.transactions);
+        } else {
+          const errorData = await response.json().catch(() => ({ error: 'Upload failed' }));
+          errors.push(`${file.name}: ${errorData.error || 'Upload failed'}`);
+        }
+      }
+
+      if (allTransactions.length > 0) {
+        setTransactions(allTransactions);
         setShowPreview(true);
-      } else {
-        console.error('Upload failed:', response.statusText);
+      }
+
+      if (errors.length > 0) {
+        alert(`Some files failed to upload:\n${errors.join('\n')}`);
       }
     } catch (error) {
       console.error('Upload error:', error);
     } finally {
       setIsUploading(false);
+      setUploadProgress('');
     }
   };
 
@@ -117,7 +137,7 @@ function App() {
   const handleCancel = () => {
     setTransactions([]);
     setShowPreview(false);
-    setSelectedFile(null);
+    setSelectedFiles([]);
   };
 
   const handleUpdateTransaction = (index: number, updates: Partial<Transaction>) => {
@@ -254,7 +274,7 @@ function App() {
               <p className="text-slate-500">View and manage your transactions. Click a row to see details.</p>
             </div>
             <div className="rounded-2xl bg-white p-8 shadow-sm border border-slate-200">
-              <TransactionsList categories={categories} />
+              <TransactionsList categories={categories} onCreateCategory={handleCreateCategory} />
             </div>
           </>
         )}
@@ -348,30 +368,49 @@ function App() {
                 </>
               ) : (
                 <>
-                  <FileUpload onFileSelect={handleFileSelect} />
+                  <FileUpload onFilesSelect={handleFilesSelect} />
 
-                  {selectedFile && (
-                    <div className="mt-6 flex items-center justify-between p-4 bg-slate-50 rounded-xl">
-                      <div className="flex items-center gap-3">
-                        <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-emerald-100 text-emerald-600">
-                          <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                          </svg>
-                        </div>
-                        <div>
-                          <p className="font-medium text-slate-800">{selectedFile.name}</p>
-                          <p className="text-sm text-slate-500">
-                            {(selectedFile.size / 1024).toFixed(1)} KB
-                          </p>
-                        </div>
+                  {selectedFiles.length > 0 && (
+                    <div className="mt-6 space-y-3">
+                      <div className="space-y-2">
+                        {selectedFiles.map((file, index) => (
+                          <div key={index} className="flex items-center justify-between p-3 bg-slate-50 rounded-lg">
+                            <div className="flex items-center gap-3">
+                              <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-emerald-100 text-emerald-600">
+                                <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                                </svg>
+                              </div>
+                              <div>
+                                <p className="text-sm font-medium text-slate-800">{file.name}</p>
+                                <p className="text-xs text-slate-500">
+                                  {(file.size / 1024).toFixed(1)} KB
+                                </p>
+                              </div>
+                            </div>
+                            <button
+                              onClick={() => setSelectedFiles(prev => prev.filter((_, i) => i !== index))}
+                              className="text-slate-400 hover:text-red-500 p-1"
+                            >
+                              <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                              </svg>
+                            </button>
+                          </div>
+                        ))}
                       </div>
-                      <button
-                        onClick={handleUpload}
-                        disabled={isUploading}
-                        className="px-5 py-2.5 bg-emerald-500 hover:bg-emerald-600 disabled:bg-emerald-300 text-white font-medium rounded-xl transition-colors cursor-pointer disabled:cursor-not-allowed"
-                      >
-                        {isUploading ? 'Uploading...' : 'Upload'}
-                      </button>
+                      <div className="flex items-center justify-between pt-2">
+                        <p className="text-sm text-slate-500">
+                          {selectedFiles.length} file{selectedFiles.length !== 1 ? 's' : ''} selected
+                        </p>
+                        <button
+                          onClick={handleUpload}
+                          disabled={isUploading}
+                          className="px-5 py-2.5 bg-emerald-500 hover:bg-emerald-600 disabled:bg-emerald-300 text-white font-medium rounded-xl transition-colors cursor-pointer disabled:cursor-not-allowed"
+                        >
+                          {isUploading ? (uploadProgress || 'Uploading...') : 'Upload'}
+                        </button>
+                      </div>
                     </div>
                   )}
                 </>

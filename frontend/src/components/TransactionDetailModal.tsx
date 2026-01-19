@@ -10,6 +10,7 @@ interface TransactionDetailModalProps {
   isOpen: boolean;
   onClose: () => void;
   onTransactionUpdate: (updated: Transaction) => void;
+  onCreateCategory?: (name: string) => Promise<Category>;
 }
 
 function formatCurrency(cents: number): string {
@@ -35,6 +36,7 @@ function TransactionDetailModal({
   isOpen,
   onClose,
   onTransactionUpdate,
+  onCreateCategory,
 }: TransactionDetailModalProps) {
   const [potentialOriginals, setPotentialOriginals] = useState<Transaction[]>([]);
   const [isLoadingOriginals, setIsLoadingOriginals] = useState(false);
@@ -44,10 +46,39 @@ function TransactionDetailModal({
   const [isLinking, setIsLinking] = useState(false);
   const [isUnlinking, setIsUnlinking] = useState(false);
 
+  // Edit mode state
+  const [isEditing, setIsEditing] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
+  const [editForm, setEditForm] = useState({
+    vendor: '',
+    description: '',
+    amount_cents: 0,
+    date: '',
+    direction: 'expense' as 'income' | 'expense',
+    category_id: '' as string | null,
+  });
+  const [newCategoryName, setNewCategoryName] = useState('');
+
   const isRefund = transaction?.direction === 'income';
   const isLinkedRefund = !!transaction?.refund_of_transaction_id;
   const hasRefunds = (transaction?.refunds?.length ?? 0) > 0;
   const hasId = !!transaction?.id;
+
+  // Reset edit form when transaction changes or modal opens
+  useEffect(() => {
+    if (transaction && isOpen) {
+      setEditForm({
+        vendor: transaction.vendor,
+        description: transaction.description || '',
+        amount_cents: transaction.amount_cents,
+        date: transaction.date,
+        direction: transaction.direction,
+        category_id: transaction.category_id || null,
+      });
+      setIsEditing(false);
+      setNewCategoryName('');
+    }
+  }, [transaction?.id, isOpen]);
 
   useEffect(() => {
     if (isOpen && transaction && isRefund && !isLinkedRefund && hasId) {
@@ -143,34 +174,204 @@ function TransactionDetailModal({
     return categories.find(c => c.id === categoryId)?.name ?? 'Unknown';
   };
 
+  const handleSave = async () => {
+    if (!transaction?.id) return;
+
+    setIsSaving(true);
+    try {
+      const response = await fetch(
+        `${apiUrl}/api/transactions/${transaction.id}`,
+        {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify({
+            vendor: editForm.vendor,
+            description: editForm.description,
+            amount_cents: editForm.amount_cents,
+            date: editForm.date,
+            direction: editForm.direction,
+            category_id: editForm.category_id,
+          }),
+        }
+      );
+
+      if (response.ok) {
+        const updated = await response.json();
+        onTransactionUpdate(updated);
+        setIsEditing(false);
+      }
+    } catch (error) {
+      console.error('Failed to save transaction:', error);
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleCreateAndSelectCategory = async () => {
+    if (!newCategoryName.trim() || !onCreateCategory) return;
+
+    try {
+      const category = await onCreateCategory(newCategoryName.trim());
+      setEditForm(prev => ({ ...prev, category_id: category.id }));
+      setNewCategoryName('');
+    } catch (error) {
+      console.error('Failed to create category:', error);
+    }
+  };
+
   if (!transaction) return null;
 
   return (
-    <Modal isOpen={isOpen} onClose={onClose} title="Transaction Details">
+    <Modal isOpen={isOpen} onClose={onClose} title={isEditing ? "Edit Transaction" : "Transaction Details"}>
       <div className="space-y-4">
-        <div className="flex justify-between items-start">
-          <div>
-            <h3 className="text-lg font-semibold text-slate-800">{transaction.vendor}</h3>
-            <p className="text-sm text-slate-500">{formatDate(transaction.date)}</p>
-          </div>
-          <span className={`text-xl font-bold ${
-            transaction.direction === 'income' ? 'text-emerald-600' : 'text-slate-800'
-          }`}>
-            {transaction.direction === 'income' ? '+' : '-'}
-            {formatCurrency(transaction.amount_cents)}
-          </span>
-        </div>
+        {isEditing ? (
+          // Edit Mode
+          <>
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">Vendor</label>
+                <input
+                  type="text"
+                  value={editForm.vendor}
+                  onChange={(e) => setEditForm(prev => ({ ...prev, vendor: e.target.value }))}
+                  className="w-full px-3 py-2 rounded-lg border border-slate-200 focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                />
+              </div>
 
-        {transaction.description && (
-          <p className="text-sm text-slate-600">{transaction.description}</p>
-        )}
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">Description</label>
+                <input
+                  type="text"
+                  value={editForm.description}
+                  onChange={(e) => setEditForm(prev => ({ ...prev, description: e.target.value }))}
+                  className="w-full px-3 py-2 rounded-lg border border-slate-200 focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                  placeholder="Optional"
+                />
+              </div>
 
-        <div className="flex items-center gap-2">
-          <span className="text-sm text-slate-500">Category:</span>
-          <span className="text-sm font-medium text-slate-700">
-            {getCategoryName(transaction.category_id)}
-          </span>
-        </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-1">Amount</label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    value={(editForm.amount_cents / 100).toFixed(2)}
+                    onChange={(e) => setEditForm(prev => ({ ...prev, amount_cents: Math.round(parseFloat(e.target.value || '0') * 100) }))}
+                    className="w-full px-3 py-2 rounded-lg border border-slate-200 focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-1">Date</label>
+                  <input
+                    type="date"
+                    value={editForm.date}
+                    onChange={(e) => setEditForm(prev => ({ ...prev, date: e.target.value }))}
+                    className="w-full px-3 py-2 rounded-lg border border-slate-200 focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">Type</label>
+                <select
+                  value={editForm.direction}
+                  onChange={(e) => setEditForm(prev => ({ ...prev, direction: e.target.value as 'income' | 'expense' }))}
+                  className="w-full px-3 py-2 rounded-lg border border-slate-200 focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                >
+                  <option value="expense">Expense</option>
+                  <option value="income">Income</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">Category</label>
+                <select
+                  value={editForm.category_id || ''}
+                  onChange={(e) => setEditForm(prev => ({ ...prev, category_id: e.target.value || null }))}
+                  className="w-full px-3 py-2 rounded-lg border border-slate-200 focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                >
+                  <option value="">Uncategorized</option>
+                  {categories.map(cat => (
+                    <option key={cat.id} value={cat.id}>{cat.name}</option>
+                  ))}
+                </select>
+              </div>
+
+              {onCreateCategory && (
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    value={newCategoryName}
+                    onChange={(e) => setNewCategoryName(e.target.value)}
+                    placeholder="New category name"
+                    className="flex-1 px-3 py-2 rounded-lg border border-slate-200 focus:outline-none focus:ring-2 focus:ring-emerald-500 text-sm"
+                  />
+                  <button
+                    onClick={handleCreateAndSelectCategory}
+                    disabled={!newCategoryName.trim()}
+                    className="px-3 py-2 text-sm font-medium text-emerald-600 hover:text-emerald-700 disabled:opacity-50"
+                  >
+                    Add
+                  </button>
+                </div>
+              )}
+            </div>
+
+            <div className="flex gap-2 pt-4 border-t border-slate-200">
+              <button
+                onClick={() => setIsEditing(false)}
+                className="flex-1 px-4 py-2 text-sm font-medium text-slate-600 hover:text-slate-800 border border-slate-200 rounded-lg"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleSave}
+                disabled={isSaving || !editForm.vendor.trim()}
+                className="flex-1 px-4 py-2 text-sm font-medium text-white bg-emerald-500 hover:bg-emerald-600 disabled:bg-emerald-300 rounded-lg"
+              >
+                {isSaving ? 'Saving...' : 'Save'}
+              </button>
+            </div>
+          </>
+        ) : (
+          // View Mode
+          <>
+            <div className="flex justify-between items-start">
+              <div>
+                <h3 className="text-lg font-semibold text-slate-800">{transaction.vendor}</h3>
+                <p className="text-sm text-slate-500">{formatDate(transaction.date)}</p>
+              </div>
+              <span className={`text-xl font-bold ${
+                transaction.direction === 'income' ? 'text-emerald-600' : 'text-slate-800'
+              }`}>
+                {transaction.direction === 'income' ? '+' : '-'}
+                {formatCurrency(transaction.amount_cents)}
+              </span>
+            </div>
+
+            {transaction.description && (
+              <p className="text-sm text-slate-600">{transaction.description}</p>
+            )}
+
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <span className="text-sm text-slate-500">Category:</span>
+                <span className="text-sm font-medium text-slate-700">
+                  {getCategoryName(transaction.category_id)}
+                </span>
+              </div>
+              {hasId && (
+                <button
+                  onClick={() => setIsEditing(true)}
+                  className="text-sm font-medium text-emerald-600 hover:text-emerald-700"
+                >
+                  Edit
+                </button>
+              )}
+            </div>
 
         {isLinkedRefund && (
           <div className="rounded-lg bg-emerald-50 border border-emerald-200 p-3">
@@ -284,6 +485,8 @@ function TransactionDetailModal({
               Save this transaction to enable refund linking.
             </p>
           </div>
+        )}
+          </>
         )}
       </div>
     </Modal>

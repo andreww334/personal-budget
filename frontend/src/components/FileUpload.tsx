@@ -2,11 +2,12 @@ import { useState, useRef } from 'react';
 import type { DragEvent, ChangeEvent } from 'react';
 
 interface FileUploadProps {
-  onFileSelect: (file: File) => void;
+  onFilesSelect: (files: File[]) => void;
   accept?: string;
+  multiple?: boolean;
 }
 
-function FileUpload({ onFileSelect, accept = '.csv' }: FileUploadProps) {
+function FileUpload({ onFilesSelect, accept = '.csv', multiple = true }: FileUploadProps) {
   const [isDragging, setIsDragging] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -24,12 +25,10 @@ function FileUpload({ onFileSelect, accept = '.csv' }: FileUploadProps) {
     e.preventDefault();
     setIsDragging(false);
 
-    const files = e.dataTransfer.files;
-    if (files.length > 0) {
-      const file = files[0];
-      if (file.name.endsWith('.csv')) {
-        onFileSelect(file);
-      }
+    const droppedFiles = Array.from(e.dataTransfer.files);
+    const csvFiles = droppedFiles.filter(file => file.name.endsWith('.csv'));
+    if (csvFiles.length > 0) {
+      onFilesSelect(multiple ? csvFiles : [csvFiles[0]]);
     }
   };
 
@@ -40,7 +39,7 @@ function FileUpload({ onFileSelect, accept = '.csv' }: FileUploadProps) {
   const handleFileChange = (e: ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
     if (files && files.length > 0) {
-      onFileSelect(files[0]);
+      onFilesSelect(Array.from(files));
     }
   };
 
@@ -64,6 +63,7 @@ function FileUpload({ onFileSelect, accept = '.csv' }: FileUploadProps) {
         ref={fileInputRef}
         onChange={handleFileChange}
         accept={accept}
+        multiple={multiple}
         hidden
       />
 
@@ -89,10 +89,10 @@ function FileUpload({ onFileSelect, accept = '.csv' }: FileUploadProps) {
 
         <div>
           <p className="text-slate-700 font-medium">
-            Drop your CSV file here
+            Drop your CSV {multiple ? 'files' : 'file'} here
           </p>
           <p className="mt-1 text-sm text-slate-400">
-            or click to browse
+            or click to browse {multiple && '(multiple files supported)'}
           </p>
         </div>
       </div>

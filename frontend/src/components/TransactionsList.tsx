@@ -7,6 +7,7 @@ const PAGE_SIZE = 50;
 
 interface TransactionsListProps {
   categories: Category[];
+  onCreateCategory?: (name: string) => Promise<Category>;
 }
 
 function formatCurrency(cents: number): string {
@@ -25,7 +26,7 @@ function formatDate(dateStr: string): string {
   });
 }
 
-function TransactionsList({ categories }: TransactionsListProps) {
+function TransactionsList({ categories, onCreateCategory }: TransactionsListProps) {
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -292,6 +293,7 @@ function TransactionsList({ categories }: TransactionsListProps) {
         isOpen={isModalOpen}
         onClose={handleCloseModal}
         onTransactionUpdate={handleTransactionUpdate}
+        onCreateCategory={onCreateCategory}
       />
     </div>
   );
