@@ -3,11 +3,18 @@ from uuid import UUID
 
 from flask import Blueprint, request, jsonify, g
 
-from app.extensions import db
+from app.extensions import db, cache
 from app.models import Transaction
 from app.auth import login_required
 
 transactions_bp = Blueprint("transactions", __name__)
+
+
+def invalidate_user_cache(user_id: str) -> None:
+    """Invalidate all transaction caches for a user."""
+    # Clear all memoized entries for list_transactions_cached
+    # This is safe for a personal budget app with few users
+    cache.delete_memoized(list_transactions_cached)
 
 
 def serialize_transaction(t: Transaction, include_refunds: bool = False) -> dict:
@@ -49,6 +56,44 @@ def serialize_transaction(t: Transaction, include_refunds: bool = False) -> dict
     return result
 
 
+@cache.memoize(timeout=300)
+def list_transactions_cached(
+    user_id: str,
+    start_date: str | None,
+    end_date: str | None,
+    direction: str | None,
+    source: str | None,
+    limit: int,
+    offset: int
+) -> dict:
+    """Cached transaction list query."""
+    query = Transaction.query.filter_by(user_id=UUID(user_id))
+
+    if start_date:
+        query = query.filter(Transaction.date >= datetime.strptime(start_date, "%Y-%m-%d").date())
+
+    if end_date:
+        query = query.filter(Transaction.date <= datetime.strptime(end_date, "%Y-%m-%d").date())
+
+    if direction in ("income", "expense"):
+        query = query.filter_by(direction=direction)
+
+    if source:
+        query = query.filter_by(source=source)
+
+    total_count = query.count()
+    transactions = query.order_by(Transaction.date.desc()).offset(offset).limit(limit).all()
+
+    return {
+        "transactions": [serialize_transaction(t, include_refunds=True) for t in transactions],
+        "count": len(transactions),
+        "total_count": total_count,
+        "limit": limit,
+        "offset": offset,
+        "has_more": offset + limit < total_count,
+    }
+
+
 @transactions_bp.route("/api/transactions", methods=["GET"])
 @login_required
 def list_transactions() -> tuple:
@@ -63,43 +108,16 @@ def list_transactions() -> tuple:
     - limit: Number of transactions to return (default 50)
     - offset: Pagination offset (default 0)
     """
-    query = Transaction.query.filter_by(user_id=g.user_id)
-
-    # Apply filters
-    start_date = request.args.get("start_date")
-    if start_date:
-        query = query.filter(Transaction.date >= datetime.strptime(start_date, "%Y-%m-%d").date())
-
-    end_date = request.args.get("end_date")
-    if end_date:
-        query = query.filter(Transaction.date <= datetime.strptime(end_date, "%Y-%m-%d").date())
-
-    direction = request.args.get("direction")
-    if direction in ("income", "expense"):
-        query = query.filter_by(direction=direction)
-
-    source = request.args.get("source")
-    if source:
-        query = query.filter_by(source=source)
-
-    # Get total count before pagination
-    total_count = query.count()
-
-    # Pagination
-    limit = request.args.get("limit", 50, type=int)
-    offset = request.args.get("offset", 0, type=int)
-
-    # Order by date descending (most recent first) and apply pagination
-    transactions = query.order_by(Transaction.date.desc()).offset(offset).limit(limit).all()
-
-    return jsonify({
-        "transactions": [serialize_transaction(t, include_refunds=True) for t in transactions],
-        "count": len(transactions),
-        "total_count": total_count,
-        "limit": limit,
-        "offset": offset,
-        "has_more": offset + limit < total_count,
-    }), 200
+    result = list_transactions_cached(
+        user_id=str(g.user_id),
+        start_date=request.args.get("start_date"),
+        end_date=request.args.get("end_date"),
+        direction=request.args.get("direction"),
+        source=request.args.get("source"),
+        limit=request.args.get("limit", 50, type=int),
+        offset=request.args.get("offset", 0, type=int),
+    )
+    return jsonify(result), 200
 
 
 @transactions_bp.route("/api/transactions/<transaction_id>", methods=["GET"])
@@ -148,6 +166,7 @@ def update_transaction(transaction_id: str) -> tuple:
         transaction.category_id = UUID(data["category_id"]) if data["category_id"] else None
 
     db.session.commit()
+    invalidate_user_cache(str(g.user_id))
 
     return jsonify(serialize_transaction(transaction)), 200
 
@@ -166,6 +185,7 @@ def delete_transaction(transaction_id: str) -> tuple:
 
     db.session.delete(transaction)
     db.session.commit()
+    invalidate_user_cache(str(g.user_id))
 
     return jsonify({"success": True, "deleted_id": transaction_id}), 200
 
@@ -205,6 +225,7 @@ def commit_transactions() -> tuple:
 
     if created_count > 0:
         db.session.commit()
+        invalidate_user_cache(str(g.user_id))
         print(f"Committed {created_count} transactions to database")
 
     return jsonify({
@@ -313,6 +334,7 @@ def link_refund(transaction_id: str) -> tuple:
     refund.category_id = original.category_id
 
     db.session.commit()
+    invalidate_user_cache(str(g.user_id))
 
     return jsonify(serialize_transaction(refund, include_refunds=True)), 200
 
@@ -339,5 +361,6 @@ def unlink_refund(transaction_id: str) -> tuple:
 
     refund.refund_of_transaction_id = None
     db.session.commit()
+    invalidate_user_cache(str(g.user_id))
 
     return jsonify(serialize_transaction(refund, include_refunds=True)), 200

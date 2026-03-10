@@ -3,7 +3,7 @@ load_dotenv()
 
 from flask import Flask
 from app.config import Config
-from app.extensions import db, migrate
+from app.extensions import db, migrate, cache
 from app.routes.health import health_bp
 from app.routes.upload import upload_bp
 from app.routes.transactions import transactions_bp
@@ -21,8 +21,13 @@ def create_app():
   ], supports_credentials=True)
   app.config.from_object(Config)
 
+  # Cache configuration - 5 minute timeout, stores up to 1000 items
+  app.config["CACHE_TYPE"] = "SimpleCache"
+  app.config["CACHE_DEFAULT_TIMEOUT"] = 300
+
   db.init_app(app)
   migrate.init_app(app, db)
+  cache.init_app(app)
 
   app.register_blueprint(health_bp)
   app.register_blueprint(upload_bp)
