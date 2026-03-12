@@ -21,9 +21,10 @@ def create_app():
   ], supports_credentials=True)
   app.config.from_object(Config)
 
-  # Cache configuration - 5 minute timeout, stores up to 1000 items
+  # Cache configuration - 5 minute timeout, max 100 entries per worker
   app.config["CACHE_TYPE"] = "SimpleCache"
   app.config["CACHE_DEFAULT_TIMEOUT"] = 300
+  app.config["CACHE_THRESHOLD"] = 100
 
   db.init_app(app)
   migrate.init_app(app, db)
